@@ -1,0 +1,18 @@
+# Donnees sensibles - ne jamais publier
+.env
+contacts_data.csv
+
+# Fichiers generes localement
+birthday-bot.log
+last_run.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Divers
+Thumbs.db
+.DS_Store

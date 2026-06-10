@@ -1,0 +1,9 @@
+groupe;pseudo;nom;prenom;jour;mois;annee;description
+
+Amis;Pseudo1;NomFamille;Prenom;15;janvier;2000;description courte optionnelle
+Amis;Pseudo2;x;Prenom;22;mars;x;x
+Amis;Pseudo3;x;x;7;juillet;1998;fan de jeux video
+
+Famille;Maman;NomFamille;Prenom;12;avril;1975;la meilleure
+Famille;Papa;NomFamille;Prenom;3;octobre;1972;x
+Famille;Frere;NomFamille;Prenom;19;juin;2002;x
