@@ -1,9 +1,11 @@
-groupe;pseudo;nom;prenom;jour;mois;annee;description
+groupe;pseudo;nom;prenom;jour;mois;annee;description;ajoute_par
 
-Amis;Pseudo1;NomFamille;Prenom;15;janvier;2000;description courte optionnelle
-Amis;Pseudo2;x;Prenom;22;mars;x;x
-Amis;Pseudo3;x;x;7;juillet;1998;fan de jeux video
+Amis;Pseudo1;NomFamille;Prenom;15;janvier;2000;description courte optionnelle;x
+Amis;Pseudo2;x;Prenom;22;mars;x;x;Aki
+Amis;Pseudo3;x;x;7;juillet;1998;fan de jeux video;Aki
 
-Famille;Maman;NomFamille;Prenom;12;avril;1975;la meilleure
-Famille;Papa;NomFamille;Prenom;3;octobre;1972;x
-Famille;Frere;NomFamille;Prenom;19;juin;2002;x
+Famille;Maman;NomFamille;Prenom;12;avril;1975;la meilleure;x
+Famille;Papa;NomFamille;Prenom;3;octobre;1972;x;x
+
+Special;Mariage parents;x;x;18;juin;1998;mariage;Aki
+Special;Relation Keliaz;x;x;14;fevrier;2023;relation;Aki

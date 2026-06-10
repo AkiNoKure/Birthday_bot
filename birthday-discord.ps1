@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+﻿﻿#requires -Version 5.1
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -200,6 +200,7 @@ function Get-GroupLabel {
     switch ($Groupe.Trim().ToLowerInvariant()) {
         'famille' { return ':family: Famille' }
         'amis'    { return ':busts_in_silhouette: Amis' }
+        'special' { return ':sparkles: Spécial' }
         default   { return ":pushpin: $Groupe" }
     }
 }
@@ -394,15 +395,26 @@ if ($birthdaysToday.Count -gt 0) {
     foreach ($b in $birthdaysToday) {
         $fieldName = "$(Get-GroupLabel $b.Group)  —  $($b.Name)"
 
-        if ($null -ne $b.Age) {
-            $fieldValue = "Fête ses **$($b.Age) ans** aujourd'hui ! :birthday:"
+        if ($b.Group.ToLowerInvariant() -eq 'special') {
+            if (-not [string]::IsNullOrWhiteSpace($b.Description) -and $b.Description -ne 'x') {
+                $fieldValue = ":tada: Bon anniversaire de **$($b.Description)** !"
+            } else {
+                $fieldValue = ":tada: Bon anniversaire !"
+            }
+            if ($null -ne $b.Age) {
+                $fieldValue += " ($($b.Age) ans)"
+            }
         }
         else {
-            $fieldValue = "Bon anniversaire ! :birthday:"
-        }
-
-        if (-not [string]::IsNullOrWhiteSpace($b.Description) -and $b.Description -ne 'x') {
-            $fieldValue += "`n*$($b.Description)*"
+            if ($null -ne $b.Age) {
+                $fieldValue = "Fête ses **$($b.Age) ans** aujourd'hui ! :birthday:"
+            }
+            else {
+                $fieldValue = "Bon anniversaire ! :birthday:"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($b.Description) -and $b.Description -ne 'x') {
+                $fieldValue += "`n*$($b.Description)*"
+            }
         }
 
         $fields += @{ name = $fieldName; value = $fieldValue; inline = $false }
@@ -452,32 +464,15 @@ if ($birthdaysSoon.Count -gt 0) {
         }
 
         $fieldName  = "$(Get-GroupLabel $item.Group)  —  $($item.Name)"
-        $fieldValue = $quand
-        if ($null -ne $item.Age) {
-            $fieldValue += "`nFêtera ses **$($item.Age) ans** :birthday:"
+
+        if ($item.Group.ToLowerInvariant() -eq 'special') {
+            $descUpcoming = if (-not [string]::IsNullOrWhiteSpace($item.Description) -and $item.Description -ne 'x') { " de **$($item.Description)**" } else { "" }
+            $fieldValue = "$quand`nAnniversaire$descUpcoming"
+            if ($null -ne $item.Age) {
+                $fieldValue += " ($($item.Age) ans)"
+            }
         }
-
-        $fields += @{ name = $fieldName; value = $fieldValue; inline = $false }
-    }
-
-    $embed = @{
-        title       = ":calendar_spiral: Anniversaires à venir — $($sorted.Count) dans les 7 prochains jours"
-        color       = 5793266
-        fields      = $fields
-        footer      = @{ text = "Birthday Bot" }
-        timestamp   = $today.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    }
-
-    Send-DiscordEmbed -Embed $embed
-    Write-Log "Récapitulatif envoyé : $($sorted.Count) anniversaire(s) à venir."
-}
-else {
-    Write-Log "Aucun anniversaire dans les 7 prochains jours."
-}
-
-###############################################################################
-# Mise à jour de la date de dernière exécution
-###############################################################################
-$todayStr | Set-Content -LiteralPath $LastRunFile -Encoding UTF8
-
-Write-Log "--- Fin d'exécution ---"
+        else {
+            $fieldValue = $quand
+            if ($null -ne $item.Age) {
+                $fieldValue += "`

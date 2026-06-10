@@ -1,4 +1,4 @@
-import discord
+﻿import discord
 from discord import app_commands
 import csv
 import os
@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 
 MONTHS_TO_NUM = {
-    'janvier': 1, 'fevrier': 2, 'fevrier': 2, 'mars': 3, 'avril': 4,
+    'janvier': 1, 'fevrier': 2, 'mars': 3, 'avril': 4,
     'mai': 5, 'juin': 6, 'juillet': 7, 'aout': 8,
     'septembre': 9, 'octobre': 10, 'novembre': 11, 'decembre': 12
 }
@@ -23,6 +23,8 @@ MONTHS_DISPLAY = [
 MONTH_ALIASES = {
     'février': 'fevrier', 'août': 'aout', 'décembre': 'decembre'
 }
+
+GROUPES_VALIDES = ['Amis', 'Famille', 'Special']
 
 ###############################################################################
 # Lecture du .env
@@ -43,14 +45,13 @@ def read_env():
 ###############################################################################
 # CSV helpers
 ###############################################################################
-FIELDNAMES = ['groupe', 'pseudo', 'nom', 'prenom', 'jour', 'mois', 'annee', 'description']
+FIELDNAMES = ['groupe', 'pseudo', 'nom', 'prenom', 'jour', 'mois', 'annee', 'description', 'ajoute_par']
 
 def read_csv(data_file):
     rows = []
     with open(data_file, 'r', encoding='utf-8-sig', newline='') as f:
         reader = csv.DictReader(f, delimiter=';')
         for row in reader:
-            # Skip blank rows
             if not row.get('groupe', '').strip():
                 continue
             rows.append(row)
@@ -58,11 +59,10 @@ def read_csv(data_file):
 
 def write_csv(data_file, rows):
     with open(data_file, 'w', encoding='utf-8-sig', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, delimiter=';')
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, delimiter=';', extrasaction='ignore')
         writer.writeheader()
-        writer.writerow({k: '' for k in FIELDNAMES})  # blank line after header
+        writer.writerow({k: '' for k in FIELDNAMES})  # ligne vide apres header
 
-        # Group by groupe for readability
         groupes = {}
         for row in rows:
             g = row.get('groupe', 'Autre')
@@ -71,16 +71,14 @@ def write_csv(data_file, rows):
         first = True
         for g, group_rows in groupes.items():
             if not first:
-                writer.writerow({k: '' for k in FIELDNAMES})  # blank line between groups
+                writer.writerow({k: '' for k in FIELDNAMES})
             first = False
             for row in group_rows:
-                writer.writerow({k: row.get(k, 'x') for k in FIELDNAMES})
+                writer.writerow({k: row.get(k, 'x') or 'x' for k in FIELDNAMES})
 
 def normalize_month(mois_input):
-    """Normalise le nom du mois en minuscules sans accents."""
     m = mois_input.strip().lower()
-    m = MONTH_ALIASES.get(m, m)
-    return m
+    return MONTH_ALIASES.get(m, m)
 
 ###############################################################################
 # Bot setup
@@ -97,11 +95,14 @@ if not DATA_FILE or not BOT_TOKEN:
     raise ValueError("DATA_FILE et BOT_TOKEN doivent etre definis dans .env")
 
 ###############################################################################
-# Autocomplete helpers
+# Autocomplete
 ###############################################################################
 async def autocomplete_groupe(interaction: discord.Interaction, current: str):
-    choices = ['Amis', 'Famille']
-    return [app_commands.Choice(name=c, value=c) for c in choices if current.lower() in c.lower()]
+    return [
+        app_commands.Choice(name=c, value=c)
+        for c in GROUPES_VALIDES
+        if current.lower() in c.lower()
+    ]
 
 async def autocomplete_mois(interaction: discord.Interaction, current: str):
     return [
@@ -128,13 +129,13 @@ async def autocomplete_pseudo(interaction: discord.Interaction, current: str):
 @tree.command(name="add-birthday", description="Ajouter un anniversaire au fichier")
 @app_commands.describe(
     pseudo="Pseudo ou surnom (ex: Zouille)",
-    groupe="Groupe : Amis ou Famille",
+    groupe="Groupe : Amis, Famille ou Special",
     jour="Jour du mois (ex: 15)",
     mois="Mois en francais (ex: juillet)",
-    annee="Annee de naissance (optionnel, ex: 2000)",
+    annee="Annee (optionnel, ex: 2000)",
     nom="Nom de famille (optionnel)",
     prenom="Prenom (optionnel)",
-    description="Description courte (optionnel)"
+    description="Pour Amis/Famille : description courte. Pour Special : type d'evenement (ex: mariage, relation)"
 )
 @app_commands.autocomplete(groupe=autocomplete_groupe, mois=autocomplete_mois)
 async def add_birthday(
@@ -150,7 +151,6 @@ async def add_birthday(
 ):
     mois_norm = normalize_month(mois)
 
-    # Validation
     if mois_norm not in MONTHS_TO_NUM:
         await interaction.response.send_message(
             f":x: Mois invalide : `{mois}`\nMois acceptes : {', '.join(MONTHS_DISPLAY)}",
@@ -163,19 +163,18 @@ async def add_birthday(
         return
 
     groupe_clean = groupe.strip().capitalize()
-    if groupe_clean not in ('Amis', 'Famille'):
+    if groupe_clean not in GROUPES_VALIDES:
         await interaction.response.send_message(
-            ":x: Groupe invalide. Utilise `Amis` ou `Famille`.", ephemeral=True
+            f":x: Groupe invalide. Utilise : {', '.join(GROUPES_VALIDES)}", ephemeral=True
         )
         return
 
     rows = read_csv(DATA_FILE)
 
-    # Verifier doublon
     for row in rows:
         if row.get('pseudo', '').strip().lower() == pseudo.lower():
             await interaction.response.send_message(
-                f":warning: `{pseudo}` existe deja. Utilise `/delete-birthday` puis `/add-birthday` pour corriger.",
+                f":warning: `{pseudo}` existe deja. Utilise `/edit-birthday` pour modifier.",
                 ephemeral=True
             )
             return
@@ -189,14 +188,128 @@ async def add_birthday(
         'mois':        mois_norm,
         'annee':       annee.strip() if annee and annee != 'x' else 'x',
         'description': description.strip() if description and description != 'x' else 'x',
+        'ajoute_par':  interaction.user.display_name,
     }
 
     rows.append(new_row)
     write_csv(DATA_FILE, rows)
 
     age_str = f" ({annee})" if annee and annee != 'x' else ""
+    groupe_emoji = ":sparkles:" if groupe_clean == "Special" else ":white_check_mark:"
     await interaction.response.send_message(
-        f":white_check_mark: **{pseudo}** ajoute ! Anniversaire le **{jour} {mois_norm}{age_str}** — {groupe_clean}"
+        f"{groupe_emoji} **{pseudo}** ajoute ! Le **{jour} {mois_norm}{age_str}** — {groupe_clean} (ajoute par {interaction.user.display_name})"
+    )
+
+###############################################################################
+# /edit-birthday
+###############################################################################
+@tree.command(name="edit-birthday", description="Modifier une entree existante")
+@app_commands.describe(
+    pseudo="Pseudo du contact a modifier",
+    nouveau_pseudo="Nouveau pseudo (optionnel)",
+    groupe="Nouveau groupe (optionnel)",
+    jour="Nouveau jour (optionnel)",
+    mois="Nouveau mois (optionnel)",
+    annee="Nouvelle annee (optionnel, 'x' pour effacer)",
+    nom="Nouveau nom (optionnel, 'x' pour effacer)",
+    prenom="Nouveau prenom (optionnel, 'x' pour effacer)",
+    description="Nouvelle description (optionnel, 'x' pour effacer)"
+)
+@app_commands.autocomplete(pseudo=autocomplete_pseudo, groupe=autocomplete_groupe, mois=autocomplete_mois)
+async def edit_birthday(
+    interaction: discord.Interaction,
+    pseudo: str,
+    nouveau_pseudo: str = None,
+    groupe: str = None,
+    jour: int = None,
+    mois: str = None,
+    annee: str = None,
+    nom: str = None,
+    prenom: str = None,
+    description: str = None
+):
+    rows = read_csv(DATA_FILE)
+
+    target = None
+    target_idx = None
+    for i, row in enumerate(rows):
+        if row.get('pseudo', '').strip().lower() == pseudo.strip().lower():
+            target = dict(row)
+            target_idx = i
+            break
+
+    if target is None:
+        await interaction.response.send_message(
+            f":x: Aucun contact trouve avec le pseudo `{pseudo}`.", ephemeral=True
+        )
+        return
+
+    changes = []
+
+    if nouveau_pseudo is not None:
+        # Verifier que le nouveau pseudo n'existe pas deja
+        for i, row in enumerate(rows):
+            if i != target_idx and row.get('pseudo', '').strip().lower() == nouveau_pseudo.lower():
+                await interaction.response.send_message(
+                    f":x: Le pseudo `{nouveau_pseudo}` est deja utilise.", ephemeral=True
+                )
+                return
+        changes.append(f"pseudo : `{target['pseudo']}` → `{nouveau_pseudo}`")
+        target['pseudo'] = nouveau_pseudo.strip()
+
+    if groupe is not None:
+        groupe_clean = groupe.strip().capitalize()
+        if groupe_clean not in GROUPES_VALIDES:
+            await interaction.response.send_message(
+                f":x: Groupe invalide. Utilise : {', '.join(GROUPES_VALIDES)}", ephemeral=True
+            )
+            return
+        changes.append(f"groupe : `{target.get('groupe', 'x')}` → `{groupe_clean}`")
+        target['groupe'] = groupe_clean
+
+    if jour is not None:
+        if not 1 <= jour <= 31:
+            await interaction.response.send_message(":x: Jour invalide.", ephemeral=True)
+            return
+        changes.append(f"jour : `{target.get('jour', 'x')}` → `{jour}`")
+        target['jour'] = str(jour)
+
+    if mois is not None:
+        mois_norm = normalize_month(mois)
+        if mois_norm not in MONTHS_TO_NUM:
+            await interaction.response.send_message(f":x: Mois invalide : `{mois}`", ephemeral=True)
+            return
+        changes.append(f"mois : `{target.get('mois', 'x')}` → `{mois_norm}`")
+        target['mois'] = mois_norm
+
+    if annee is not None:
+        changes.append(f"annee : `{target.get('annee', 'x')}` → `{annee.strip() or 'x'}`")
+        target['annee'] = annee.strip() if annee.strip() else 'x'
+
+    if nom is not None:
+        changes.append(f"nom : `{target.get('nom', 'x')}` → `{nom.strip() or 'x'}`")
+        target['nom'] = nom.strip() if nom.strip() else 'x'
+
+    if prenom is not None:
+        changes.append(f"prenom : `{target.get('prenom', 'x')}` → `{prenom.strip() or 'x'}`")
+        target['prenom'] = prenom.strip() if prenom.strip() else 'x'
+
+    if description is not None:
+        changes.append(f"description mise a jour")
+        target['description'] = description.strip() if description.strip() else 'x'
+
+    if not changes:
+        await interaction.response.send_message(
+            ":information_source: Aucune modification fournie.", ephemeral=True
+        )
+        return
+
+    rows[target_idx] = target
+    write_csv(DATA_FILE, rows)
+
+    changes_text = "\n".join(f"• {c}" for c in changes)
+    await interaction.response.send_message(
+        f":pencil: **{pseudo}** modifie par {interaction.user.display_name} :\n{changes_text}"
     )
 
 ###############################################################################
@@ -208,7 +321,7 @@ async def add_birthday(
 async def list_birthdays(interaction: discord.Interaction, groupe: str = None):
     rows = read_csv(DATA_FILE)
 
-    filtered = [r for r in rows if r.get('jour', 'x') != 'x' and r['jour'].isdigit()]
+    filtered = [r for r in rows if r.get('jour', 'x') != 'x' and r.get('jour', '').isdigit()]
     if groupe:
         filtered = [r for r in filtered if r.get('groupe', '').lower() == groupe.lower()]
 
@@ -232,14 +345,22 @@ async def list_birthdays(interaction: discord.Interaction, groupe: str = None):
         mois = r.get('mois', '?')
         annee = r.get('annee', 'x')
         grp = r.get('groupe', '')
-        emoji = ':family:' if grp.lower() == 'famille' else ':busts_in_silhouette:'
+        ajoute_par = r.get('ajoute_par', 'x')
+
+        if grp.lower() == 'famille':
+            emoji = ':family:'
+        elif grp.lower() == 'special':
+            emoji = ':sparkles:'
+        else:
+            emoji = ':busts_in_silhouette:'
+
         age_str = f" ({annee})" if annee and annee != 'x' else ''
-        lines.append(f"{emoji} **{name}** — {jour} {mois}{age_str}")
+        added_str = f" *— ajoute par {ajoute_par}*" if ajoute_par and ajoute_par != 'x' else ''
+        lines.append(f"{emoji} **{name}** — {jour} {mois}{age_str}{added_str}")
 
     titre = f"**Anniversaires{' — ' + groupe if groupe else ''}** ({len(filtered)} contact(s))\n\n"
     message = titre + "\n".join(lines)
 
-    # Discord limite a 2000 caracteres
     if len(message) > 1900:
         message = titre + "\n".join(lines[:20]) + f"\n\n*... et {len(lines) - 20} autre(s). Filtre par groupe pour voir tout.*"
 
@@ -262,7 +383,9 @@ async def delete_birthday(interaction: discord.Interaction, pseudo: str):
         return
 
     write_csv(DATA_FILE, new_rows)
-    await interaction.response.send_message(f":wastebasket: **{pseudo}** supprime du fichier.")
+    await interaction.response.send_message(
+        f":wastebasket: **{pseudo}** supprime par {interaction.user.display_name}."
+    )
 
 ###############################################################################
 # Events
