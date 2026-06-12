@@ -1,4 +1,4 @@
-﻿﻿#requires -Version 5.1
+﻿#requires -Version 5.1
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ $LogFile     = Join-Path $ScriptDir 'birthday-bot.log'
 $LastRunFile = Join-Path $ScriptDir 'last_run.txt'
 
 ###############################################################################
-# Vérification du .env
+# Verification du .env
 ###############################################################################
 if (-not (Test-Path -LiteralPath $EnvFile)) {
     throw "Fichier .env introuvable : $EnvFile"
@@ -26,25 +26,19 @@ function Read-EnvFile {
         [Parameter(Mandatory = $true)]
         [string]$Path
     )
-
     $config = @{}
-
     foreach ($rawLine in Get-Content -LiteralPath $Path) {
         $line = $rawLine.Trim()
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         if ($line.StartsWith('#')) { continue }
-
         $parts = $line -split '=', 2
         if ($parts.Count -ne 2) { continue }
-
         $key   = $parts[0].Trim()
         $value = $parts[1].Trim()
-
         if (-not [string]::IsNullOrWhiteSpace($key)) {
             $config[$key] = $value
         }
     }
-
     return $config
 }
 
@@ -76,7 +70,6 @@ if (-not (Test-Path -LiteralPath $DataFile)) {
 # Fonctions utilitaires
 ###############################################################################
 
-# --- Log ---
 function Write-Log {
     param([string]$Message)
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -85,7 +78,6 @@ function Write-Log {
     Write-Host $entry
 }
 
-# --- Rotation des logs (garde les 500 dernières lignes) ---
 function Invoke-LogRotation {
     param([int]$MaxLines = 500)
     if (-not (Test-Path -LiteralPath $LogFile)) { return }
@@ -95,29 +87,35 @@ function Invoke-LogRotation {
     }
 }
 
-# --- Normalisation du texte ---
 function Normalize-Text {
-    param(
-        [AllowNull()]
-        [string]$Text
-    )
+    param([AllowNull()][string]$Text)
     if ($null -eq $Text) { return '' }
     $value = $Text.Trim().ToLowerInvariant()
     $replacements = @{
-        'é' = 'e'; 'è' = 'e'; 'ê' = 'e'; 'ë' = 'e'
-        'à' = 'a'; 'â' = 'a'; 'ä' = 'a'
-        'î' = 'i'; 'ï' = 'i'
-        'ô' = 'o'; 'ö' = 'o'
-        'ù' = 'u'; 'û' = 'u'; 'ü' = 'u'
-        'ç' = 'c'; 'œ' = 'oe'; "'" = "'"
+        'e' = 'e'
+        'a' = 'a'
+        'i' = 'i'
+        'o' = 'o'
+        'u' = 'u'
+        'c' = 'c'
     }
-    foreach ($key in $replacements.Keys) {
-        $value = $value.Replace($key, $replacements[$key])
+    # Remplacement des caracteres accentues
+    $accents = @{
+        ([char]0xE9) = 'e'; ([char]0xE8) = 'e'; ([char]0xEA) = 'e'; ([char]0xEB) = 'e'
+        ([char]0xE0) = 'a'; ([char]0xE2) = 'a'; ([char]0xE4) = 'a'
+        ([char]0xEE) = 'i'; ([char]0xEF) = 'i'
+        ([char]0xF4) = 'o'; ([char]0xF6) = 'o'
+        ([char]0xF9) = 'u'; ([char]0xFB) = 'u'; ([char]0xFC) = 'u'
+        ([char]0xE7) = 'c'
+        ([char]0x153) = 'oe'
+        ([char]0x2019) = "'"
+    }
+    foreach ($key in $accents.Keys) {
+        $value = $value.Replace([string]$key, $accents[$key])
     }
     return $value
 }
 
-# --- Conversion mois ---
 function Get-MonthNumber {
     param([Parameter(Mandatory = $true)][string]$MonthName)
     switch (Normalize-Text $MonthName) {
@@ -139,12 +137,9 @@ function Get-MonthNumber {
 
 function Get-MonthName {
     param([int]$MonthNumber)
-    switch ($MonthNumber) {
-        1  { return 'janvier' }    2  { return 'février' }   3  { return 'mars' }
-        4  { return 'avril' }      5  { return 'mai' }        6  { return 'juin' }
-        7  { return 'juillet' }    8  { return 'août' }       9  { return 'septembre' }
-        10 { return 'octobre' }    11 { return 'novembre' }   12 { return 'décembre' }
-    }
+    $names = @('', 'janvier', 'f' + [char]0xE9 + 'vrier', 'mars', 'avril', 'mai', 'juin',
+               'juillet', 'ao' + [char]0xFB + 't', 'septembre', 'octobre', 'novembre', 'd' + [char]0xE9 + 'cembre')
+    return $names[$MonthNumber]
 }
 
 function Get-DayName {
@@ -160,14 +155,12 @@ function Get-DayName {
     }
 }
 
-# --- Nom affiché ---
 function Get-DisplayName {
     param([Parameter(Mandatory = $true)][pscustomobject]$Person)
     $pseudo = "$($Person.pseudo)".Trim()
     $nom    = "$($Person.nom)".Trim()
     $prenom = "$($Person.prenom)".Trim()
     $displayName = ''
-
     if (-not [string]::IsNullOrWhiteSpace($pseudo) -and $pseudo -ne 'x') {
         $displayName = $pseudo
     }
@@ -178,34 +171,29 @@ function Get-DisplayName {
                 $displayName += " $nom"
             }
             $displayName += ")"
-        }
-        else {
+        } else {
             $displayName = $prenom
             if (-not [string]::IsNullOrWhiteSpace($nom) -and $nom -ne 'x') {
                 $displayName += " $nom"
             }
         }
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($nom) -and $nom -ne 'x' -and [string]::IsNullOrWhiteSpace($displayName)) {
+    } elseif (-not [string]::IsNullOrWhiteSpace($nom) -and $nom -ne 'x' -and [string]::IsNullOrWhiteSpace($displayName)) {
         $displayName = $nom
     }
-
     if ([string]::IsNullOrWhiteSpace($displayName)) { $displayName = 'Personne inconnue' }
     return $displayName
 }
 
-# --- Label de groupe ---
 function Get-GroupLabel {
     param([string]$Groupe)
     switch ($Groupe.Trim().ToLowerInvariant()) {
         'famille' { return ':family: Famille' }
         'amis'    { return ':busts_in_silhouette: Amis' }
-        'special' { return ':sparkles: Spécial' }
+        'special' { return ':sparkles: Sp' + [char]0xE9 + 'cial' }
         default   { return ":pushpin: $Groupe" }
     }
 }
 
-# --- Calcul de l'âge ---
 function Get-AgeAtDate {
     param(
         [int]$BirthYear,
@@ -220,26 +208,21 @@ function Get-AgeAtDate {
     return $age
 }
 
-# --- Envoi Discord avec retry (3 tentatives, 10s d'attente) ---
 function Send-DiscordEmbed {
     param(
         [string]$Content = '',
         [Parameter(Mandatory = $true)]
         [hashtable]$Embed
     )
-
     $maxRetries = 3
     $retryDelay = 10
-
     $payload = [ordered]@{}
     if (-not [string]::IsNullOrWhiteSpace($Content)) {
         $payload['content'] = $Content
     }
     $payload['embeds'] = @($Embed)
-
     $json  = $payload | ConvertTo-Json -Depth 10 -Compress
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-
     for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
         try {
             Invoke-RestMethod `
@@ -248,14 +231,12 @@ function Send-DiscordEmbed {
                 -ContentType 'application/json; charset=utf-8' `
                 -Body $bytes | Out-Null
             return
-        }
-        catch {
+        } catch {
             if ($attempt -lt $maxRetries) {
-                Write-Log "AVERTISSEMENT : Tentative $attempt/$maxRetries échouée (Discord). Nouvel essai dans ${retryDelay}s... ($_)"
+                Write-Log "AVERTISSEMENT : Tentative $attempt/$maxRetries echouee. Nouvel essai dans ${retryDelay}s..."
                 Start-Sleep -Seconds $retryDelay
-            }
-            else {
-                throw "ERREUR : Echec de l'envoi Discord apres $maxRetries tentatives : $_"
+            } else {
+                throw "ERREUR : Echec apres $maxRetries tentatives : $_"
             }
         }
     }
@@ -266,8 +247,7 @@ function Send-DiscordEmbed {
 ###############################################################################
 try {
     $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById($TimeZoneId)
-}
-catch {
+} catch {
     throw "Fuseau horaire Windows invalide : $TimeZoneId"
 }
 
@@ -282,9 +262,9 @@ $todayStr   = $today.ToString('yyyy-MM-dd')
 Invoke-LogRotation
 
 ###############################################################################
-# Démarrage du log
+# Demarrage du log
 ###############################################################################
-Write-Log "--- Exécution du birthday bot ---"
+Write-Log "--- Execution du birthday bot ---"
 
 ###############################################################################
 # Protection anti-doublon
@@ -292,7 +272,7 @@ Write-Log "--- Exécution du birthday bot ---"
 if (Test-Path -LiteralPath $LastRunFile) {
     $lastRun = (Get-Content -LiteralPath $LastRunFile -Encoding UTF8).Trim()
     if ($lastRun -eq $todayStr) {
-        Write-Log "Déjà exécuté aujourd'hui ($todayStr). Arrêt du script."
+        Write-Log "Deja execute aujourd'hui ($todayStr). Arret du script."
         exit 0
     }
 }
@@ -306,7 +286,6 @@ $birthdaysSoon  = New-Object System.Collections.Generic.List[pscustomobject]
 $warningCount   = 0
 
 foreach ($row in $rows) {
-    # Ligne vide ou sans groupe — ignorée silencieusement
     if ([string]::IsNullOrWhiteSpace($row.groupe)) { continue }
 
     $displayName = Get-DisplayName -Person $row
@@ -314,34 +293,29 @@ foreach ($row in $rows) {
     $monthRaw    = "$($row.mois)".Trim()
     $yearRaw     = "$($row.annee)".Trim()
 
-    # Pas de date renseignée (x ou vide) — ignorée silencieusement
     if ([string]::IsNullOrWhiteSpace($dayRaw) -or $dayRaw -eq 'x') { continue }
 
-    # Jour non numérique
     $dayValue = 0
     if (-not [int]::TryParse($dayRaw, [ref]$dayValue)) {
-        Write-Log "AVERTISSEMENT CSV : Jour invalide '$dayRaw' pour '$displayName' — ligne ignorée."
+        Write-Log "AVERTISSEMENT CSV : Jour invalide '$dayRaw' pour '$displayName' - ligne ignoree."
         $warningCount++
         continue
     }
 
-    # Mois non reconnu
     $monthValue = Get-MonthNumber -MonthName $monthRaw
     if ($null -eq $monthValue) {
-        Write-Log "AVERTISSEMENT CSV : Mois non reconnu '$monthRaw' pour '$displayName' — ligne ignorée."
+        Write-Log "AVERTISSEMENT CSV : Mois non reconnu '$monthRaw' pour '$displayName' - ligne ignoree."
         $warningCount++
         continue
     }
 
-    # Année (optionnelle)
     $yearValue = $null
     $yearInt   = 0
     if (-not [string]::IsNullOrWhiteSpace($yearRaw) -and $yearRaw -ne 'x') {
         if ([int]::TryParse($yearRaw, [ref]$yearInt) -and $yearInt -gt 1900) {
             $yearValue = $yearInt
-        }
-        else {
-            Write-Log "AVERTISSEMENT CSV : Année invalide '$yearRaw' pour '$displayName' — année ignorée."
+        } else {
+            Write-Log "AVERTISSEMENT CSV : Annee invalide '$yearRaw' pour '$displayName' - annee ignoree."
             $warningCount++
         }
     }
@@ -349,7 +323,6 @@ foreach ($row in $rows) {
     $description = "$($row.description)".Trim()
     $groupeRaw   = "$($row.groupe)".Trim()
 
-    # --- Anniversaire aujourd'hui ---
     if ($dayValue -eq $todayDay -and $monthValue -eq $todayMonth) {
         $age = $null
         if ($null -ne $yearValue) {
@@ -363,7 +336,6 @@ foreach ($row in $rows) {
         })
     }
 
-    # --- Anniversaires dans les 7 prochains jours ---
     for ($offset = 1; $offset -le 7; $offset++) {
         $futureDate = $today.AddDays($offset)
         if ($dayValue -eq $futureDate.Day -and $monthValue -eq $futureDate.Month) {
@@ -372,11 +344,12 @@ foreach ($row in $rows) {
                 $age = Get-AgeAtDate -BirthYear $yearValue -BirthMonth $monthValue -BirthDay $dayValue -AtDate $futureDate
             }
             $birthdaysSoon.Add([pscustomobject]@{
-                Name   = $displayName
-                Group  = $groupeRaw
-                Age    = $age
-                Date   = $futureDate
-                Offset = $offset
+                Name        = $displayName
+                Group       = $groupeRaw
+                Age         = $age
+                Date        = $futureDate
+                Offset      = $offset
+                Description = $description
             })
             break
         }
@@ -384,16 +357,18 @@ foreach ($row in $rows) {
 }
 
 if ($warningCount -gt 0) {
-    Write-Log "CSV : $warningCount ligne(s) avec des données incorrectes (voir avertissements ci-dessus)."
+    Write-Log "CSV : $warningCount ligne(s) avec des donnees incorrectes."
 }
 
 ###############################################################################
 # Embed : anniversaires du jour
 ###############################################################################
+$NL = [char]10
+
 if ($birthdaysToday.Count -gt 0) {
     $fields = @()
     foreach ($b in $birthdaysToday) {
-        $fieldName = "$(Get-GroupLabel $b.Group)  —  $($b.Name)"
+        $fieldName = "$(Get-GroupLabel $b.Group)  -  $($b.Name)"
 
         if ($b.Group.ToLowerInvariant() -eq 'special') {
             if (-not [string]::IsNullOrWhiteSpace($b.Description) -and $b.Description -ne 'x') {
@@ -401,19 +376,15 @@ if ($birthdaysToday.Count -gt 0) {
             } else {
                 $fieldValue = ":tada: Bon anniversaire !"
             }
+            if ($null -ne $b.Age) { $fieldValue += " ($($b.Age) ans)" }
+        } else {
             if ($null -ne $b.Age) {
-                $fieldValue += " ($($b.Age) ans)"
-            }
-        }
-        else {
-            if ($null -ne $b.Age) {
-                $fieldValue = "Fête ses **$($b.Age) ans** aujourd'hui ! :birthday:"
-            }
-            else {
+                $fieldValue = "F" + [char]0xEA + "te ses **$($b.Age) ans** aujourd'hui ! :birthday:"
+            } else {
                 $fieldValue = "Bon anniversaire ! :birthday:"
             }
             if (-not [string]::IsNullOrWhiteSpace($b.Description) -and $b.Description -ne 'x') {
-                $fieldValue += "`n*$($b.Description)*"
+                $fieldValue += "$NL*$($b.Description)*"
             }
         }
 
@@ -422,7 +393,7 @@ if ($birthdaysToday.Count -gt 0) {
 
     $embed = @{
         title       = ":tada: Joyeux anniversaire !"
-        description = "Aujourd'hui nous fêtons :"
+        description = "Aujourd'hui nous f" + [char]0xEA + "tons :"
         color       = 16766720
         fields      = $fields
         footer      = @{ text = "Birthday Bot" }
@@ -430,49 +401,72 @@ if ($birthdaysToday.Count -gt 0) {
     }
 
     Send-DiscordEmbed -Content '@everyone' -Embed $embed
-    Write-Log "Embed anniversaire envoyé pour $($birthdaysToday.Count) personne(s) : $(($birthdaysToday | ForEach-Object { $_.Name }) -join ', ')"
-}
-else {
+    Write-Log "Embed anniversaire envoye pour $($birthdaysToday.Count) personne(s) : $(($birthdaysToday | ForEach-Object { $_.Name }) -join ', ')"
+} else {
     $embed = @{
         title       = ":white_check_mark: Aucun anniversaire aujourd'hui"
-        description = "Joyeux non-anniversaire à tous !"
+        description = "Joyeux non-anniversaire a tous !"
         color       = 5763719
         footer      = @{ text = "Birthday Bot" }
         timestamp   = $today.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     }
-
     Send-DiscordEmbed -Embed $embed
     Write-Log "Aucun anniversaire aujourd'hui."
 }
 
 ###############################################################################
-# Embed : anniversaires à venir dans les 7 jours (sans ping)
+# Embed : anniversaires a venir dans les 7 jours (sans ping)
 ###############################################################################
 if ($birthdaysSoon.Count -gt 0) {
-    $sorted = $birthdaysSoon | Sort-Object Offset
+    $sorted = @($birthdaysSoon | Sort-Object Offset)
     $fields = @()
 
     foreach ($item in $sorted) {
         $dayName   = Get-DayName   -DayOfWeek   $item.Date.DayOfWeek
         $monthName = Get-MonthName -MonthNumber  $item.Date.Month
 
-        $quand = if ($item.Offset -eq 1) {
-            "Demain — $dayName $($item.Date.Day) $monthName"
-        }
-        else {
-            "Dans $($item.Offset) jours — $dayName $($item.Date.Day) $monthName"
+        if ($item.Offset -eq 1) {
+            $quand = "Demain - $dayName $($item.Date.Day) $monthName"
+        } else {
+            $quand = "Dans $($item.Offset) jours - $dayName $($item.Date.Day) $monthName"
         }
 
-        $fieldName  = "$(Get-GroupLabel $item.Group)  —  $($item.Name)"
+        $fieldName = "$(Get-GroupLabel $item.Group)  -  $($item.Name)"
 
         if ($item.Group.ToLowerInvariant() -eq 'special') {
-            $descUpcoming = if (-not [string]::IsNullOrWhiteSpace($item.Description) -and $item.Description -ne 'x') { " de **$($item.Description)**" } else { "" }
-            $fieldValue = "$quand`nAnniversaire$descUpcoming"
-            if ($null -ne $item.Age) {
-                $fieldValue += " ($($item.Age) ans)"
+            if (-not [string]::IsNullOrWhiteSpace($item.Description) -and $item.Description -ne 'x') {
+                $fieldValue = "$quand${NL}Anniversaire de **$($item.Description)**"
+            } else {
+                $fieldValue = "$quand${NL}Anniversaire"
             }
-        }
-        else {
+            if ($null -ne $item.Age) { $fieldValue += " ($($item.Age) ans)" }
+        } else {
             $fieldValue = $quand
             if ($null -ne $item.Age) {
-                $fieldValue += "`
+                $fieldValue += "${NL}F" + [char]0xEA + "tera ses **$($item.Age) ans** :birthday:"
+            }
+        }
+
+        $fields += @{ name = $fieldName; value = $fieldValue; inline = $false }
+    }
+
+    $embed = @{
+        title       = ":calendar_spiral: Anniversaires a venir - $($sorted.Count) dans les 7 prochains jours"
+        color       = 5793266
+        fields      = $fields
+        footer      = @{ text = "Birthday Bot" }
+        timestamp   = $today.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+    }
+
+    Send-DiscordEmbed -Embed $embed
+    Write-Log "Recapitulatif envoye : $($sorted.Count) anniversaire(s) a venir."
+} else {
+    Write-Log "Aucun anniversaire dans les 7 prochains jours."
+}
+
+###############################################################################
+# Mise a jour de la date de derniere execution
+###############################################################################
+$todayStr | Set-Content -LiteralPath $LastRunFile -Encoding UTF8
+
+Write-Log "--- Fin d'execution ---"
