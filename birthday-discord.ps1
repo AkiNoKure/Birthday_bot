@@ -137,8 +137,17 @@ function Get-MonthNumber {
 
 function Get-MonthName {
     param([int]$MonthNumber)
-    $names = @('', 'janvier', 'f' + [char]0xE9 + 'vrier', 'mars', 'avril', 'mai', 'juin',
-               'juillet', 'ao' + [char]0xFB + 't', 'septembre', 'octobre', 'novembre', 'd' + [char]0xE9 + 'cembre')
+    # Chaque element est entre parentheses : en PowerShell la virgule est plus prioritaire que '+',
+    # sans parentheses les concatenations cassent le tableau et decalent les mois.
+    $names = @(
+        '',
+        'janvier',
+        ('f' + [char]0xE9 + 'vrier'),
+        'mars', 'avril', 'mai', 'juin', 'juillet',
+        ('ao' + [char]0xFB + 't'),
+        'septembre', 'octobre', 'novembre',
+        ('d' + [char]0xE9 + 'cembre')
+    )
     return $names[$MonthNumber]
 }
 
