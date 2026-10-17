@@ -1,15 +1,16 @@
-# Donnees sensibles - ne jamais publier
+# Donnees personnelles / secrets - ne jamais publier
 .env
+birthdays.db
+backups/
 contacts_data.csv
 
 # Fichiers generes localement
-birthday-bot.log
+birthday-bot.log*
 last_run.txt
 
 # Python
 __pycache__/
 *.pyc
-*.pyo
 .venv/
 venv/
 

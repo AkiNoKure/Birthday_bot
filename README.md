@@ -1,138 +1,55 @@
 # Birthday Bot Discord
 
-Bot Discord qui envoie automatiquement des rappels d'anniversaires dans un salon Discord via webhook, avec un bot slash pour gérer les contacts facilement.
+Un seul processus Python, **sans webhook** :
+- commandes slash : `/add-birthday`, `/edit-birthday`, `/list-birthdays`, `/delete-birthday`, `/export-birthdays` ;
+- chaque jour, le bot poste dans un salon les anniversaires du jour (`@everyone`) et ceux des 7 prochains jours.
 
-## Fonctionnalités
+L'annonce part à `ANNOUNCE_HOUR` (9h par défaut), une fois par jour. Si le PC était éteint, elle part au redémarrage.
 
-- Annonce les anniversaires du jour avec `@everyone` (embed Discord)
-- Récapitulatif des anniversaires dans les 7 prochains jours (sans ping)
-- Affichage de l'âge pour les contacts dont l'année de naissance est connue
-- Groupe affiché (Amis / Famille) dans chaque message
-- Bot Discord avec commandes slash pour ajouter/lister/supprimer des anniversaires
-- Protection anti-doublon (ne s'exécute qu'une fois par jour)
-- Retry automatique en cas de coupure réseau
-- Fichier de logs avec rotation automatique
-
-## Structure du projet
+## Structure
 
 ```
-birthday-bot/
-├── birthday-discord.ps1          # Script webhook (envoie les messages Discord)
-├── bot.py                        # Bot Discord (commandes slash)
-├── contacts_data.csv             # Fichier de données (non versionné)
-├── contacts_data.example.csv     # Exemple de format CSV
-├── .env                          # Configuration (non versionné)
-├── .env.example                  # Modèle de configuration
-├── launch-bot-silent.vbs         # Lance le bot sans fenêtre
-├── launch-webhook-silent.vbs     # Lance le webhook sans fenêtre
-├── register-startup.ps1          # Enregistre le bot au démarrage Windows
-├── start-bot.bat                 # Lance le bot manuellement
-└── requirements.txt              # Dépendances Python
+bot.py                  # tout le bot
+requirements.txt        # discord.py
+.env.example            # modèle de configuration (le vrai .env n'est jamais versionné)
+contacts_data.example.csv     # exemple de CSV à importer (optionnel)
+birthdays.db            # base SQLite des anniversaires (générée, non versionnée)
+backups/                # sauvegardes automatiques de la base (générées, non versionnées)
+register-startup.ps1    # démarrage automatique Windows (une fois)
+start-bot.bat           # lancement manuel
+update.bat              # git pull + relance du bot
 ```
 
 ## Installation
 
-### Prérequis
+1. `git clone https://github.com/TON_USERNAME/birthday-bot.git` puis `cd birthday-bot`
+2. `pip install -r requirements.txt`
+3. `copy .env.example .env` puis remplis `BOT_TOKEN` et `CHANNEL_ID`
+4. (optionnel) `copy contacts_data.example.csv contacts_data.csv` : si ce fichier existe au premier démarrage, il est importé dans la base. Sinon, ajoute tes contacts avec `/add-birthday`.
+5. Crée le bot sur [discord.com/developers/applications](https://discord.com/developers/applications) : **Bot → Reset Token** (copie-le dans `.env`).
+   **OAuth2 → URL Generator** : scopes `bot` + `applications.commands`, permissions dans le salon d'annonces :
+   `View Channel`, `Send Messages`, `Embed Links`, `Mention Everyone`. Invite le bot avec l'URL générée.
+6. Lance `start-bot.bat` pour tester.
 
-- Windows 10/11
-- PowerShell 5.1+
-- Python 3.8+
+## Stockage des anniversaires
 
-### 1. Cloner le projet
+Les données sont dans **`birthdays.db`** (SQLite, fichier unique, aucune dépendance).
+- Chaque contact a un **identifiant unique** : deux « Mamie » peuvent coexister, et `/edit-birthday` / `/delete-birthday` proposent une liste pour choisir le bon.
+- La base **refuse les données invalides** (groupe inconnu, jour hors 1-31, année absurde).
+- Écritures atomiques : une coupure en pleine écriture ne corrompt rien.
+- **Sauvegarde automatique** à chaque démarrage : `backups/birthdays-AAAA-MM-JJ.db`, 7 jours conservés.
+- **`/export-birthdays`** t'envoie (à toi seul) un CSV lisible dans Excel, au même format que l'import (`groupe;pseudo;nom;prenom;jour;mois;annee;description;ajoute_par`, `x` = inconnu).
 
-```bash
-git clone https://github.com/TON_USERNAME/birthday-bot.git
-cd birthday-bot
-```
+La base contient des données personnelles : elle n'est **jamais** dans Git (`.gitignore`). Pour déplacer le bot sur un autre PC, copie `birthdays.db` (ou importe un export CSV).
 
-### 2. Configurer l'environnement
+## Démarrage automatique
 
-Copie `.env.example` en `.env` et remplis les valeurs :
+`powershell -ExecutionPolicy Bypass -File register-startup.ps1` (une fois, en administrateur).
 
-```bash
-copy .env.example .env
-```
+## Déploiement / mise à jour via GitHub
 
-```env
-WEBHOOK_URL=https://discord.com/api/webhooks/...   # Webhook de ton salon Discord
-DATA_FILE=C:\chemin\vers\contacts_data.csv          # Chemin absolu vers ton CSV
-TIMEZONE=Romance Standard Time                       # Fuseau horaire
-BOT_TOKEN=ton_token_ici                             # Token du bot Discord
-```
+Le dépôt ne contient aucun secret (`.env` et `contacts_data.csv` sont dans `.gitignore`).
+Workflow : tu modifies le code, `git push`, puis sur le PC du bot tu lances `update.bat`
+(`git pull` + `pip install` + relance de la tâche).
 
-### 3. Créer le fichier de contacts
-
-Copie l'exemple et remplis avec tes contacts :
-
-```bash
-copy contacts_data.example.csv contacts_data.csv
-```
-
-Format du CSV (séparateur `;`) :
-
-| Colonne | Description | Valeur si inconnue |
-|---|---|---|
-| groupe | `Amis` ou `Famille` | — |
-| pseudo | Pseudo/surnom | `x` |
-| nom | Nom de famille | `x` |
-| prenom | Prénom | `x` |
-| jour | Jour (numérique) | `x` |
-| mois | Mois en français | `x` |
-| annee | Année de naissance | `x` |
-| description | Description courte | `x` |
-
-### 4. Installer les dépendances Python
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. Créer le bot Discord
-
-1. Va sur [discord.com/developers/applications](https://discord.com/developers/applications)
-2. **New Application** → donne un nom
-3. Onglet **Bot** → **Reset Token** → copie le token dans `.env`
-4. Onglet **OAuth2 → URL Generator** → coche `bot` + `applications.commands`
-5. Permissions : `Send Messages` + `Read Messages/View Channels`
-6. Copie l'URL générée et invite le bot sur ton serveur
-
-## Utilisation
-
-### Lancer le webhook manuellement
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "birthday-discord.ps1"
-```
-
-### Lancer le bot Discord
-
-```bash
-start-bot.bat
-```
-
-### Démarrage automatique avec Windows
-
-Lance ce script **une seule fois** en administrateur :
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "register-startup.ps1"
-```
-
-Le bot démarrera automatiquement 1 minute après chaque connexion Windows.
-
-### Planifier le webhook quotidiennement
-
-Utilise le Planificateur de tâches Windows pour exécuter `launch-webhook-silent.vbs` chaque matin à l'heure souhaitée.
-
-## Commandes Discord
-
-| Commande | Description |
-|---|---|
-| `/add-birthday` | Ajouter un anniversaire |
-| `/list-birthdays` | Lister tous les anniversaires |
-| `/delete-birthday` | Supprimer un anniversaire |
-
-## Fichiers générés automatiquement
-
-- `birthday-bot.log` — historique des exécutions (rotation automatique à 500 lignes)
-- `last_run.txt` — date de la dernière exécution (protection anti-doublon)
+Fichiers générés : `birthdays.db`, `backups/`, `birthday-bot.log` (rotation auto), `last_run.txt` (anti-doublon).
